@@ -23,9 +23,22 @@ pyinstaller ^
     --hidden-import parsers.beida ^
     --hidden-import parsers.cssci ^
     --hidden-import parsers.cscd ^
+    --hidden-import parsers.csv_parser ^
+    --hidden-import parsers.excel_parser ^
+    --hidden-import parsers.pdf_parser ^
+    --hidden-import parsers.txt_parser ^
+    --hidden-import parsers.docx_parser ^
+    --hidden-import parsers.doc_parser ^
+    --hidden-import parsers.html_parser ^
     --hidden-import core.normalizer ^
+    --hidden-import core.config ^
     --hidden-import core.matcher ^
     --hidden-import core.exporter ^
+    --hidden-import core.ingestion ^
+    --hidden-import core.parser_registry ^
+    --hidden-import core.llm_client ^
+    --hidden-import core.llm_extractor ^
+    --hidden-import core.ocr_service ^
     gui.py
 
 echo.

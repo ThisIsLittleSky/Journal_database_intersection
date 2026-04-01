@@ -23,6 +23,13 @@ class CallbackHandler(logging.Handler):
 def setup(log_dir: str = None, callback=None) -> logging.Logger:
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)
+    for handler in list(root.handlers):
+        if getattr(handler, '_journal_tool_handler', False):
+            root.removeHandler(handler)
+            try:
+                handler.close()
+            except Exception:
+                pass
 
     fmt = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s', '%H:%M:%S')
 
@@ -30,6 +37,7 @@ def setup(log_dir: str = None, callback=None) -> logging.Logger:
     ch = logging.StreamHandler()
     ch.setLevel(logging.INFO)
     ch.setFormatter(fmt)
+    ch._journal_tool_handler = True
     root.addHandler(ch)
 
     # 文件
@@ -40,6 +48,7 @@ def setup(log_dir: str = None, callback=None) -> logging.Logger:
         fh = logging.FileHandler(log_file, encoding='utf-8')
         fh.setLevel(logging.DEBUG)
         fh.setFormatter(fmt)
+        fh._journal_tool_handler = True
         root.addHandler(fh)
 
     # GUI 回调
@@ -47,6 +56,7 @@ def setup(log_dir: str = None, callback=None) -> logging.Logger:
         cbh = CallbackHandler(callback)
         cbh.setLevel(logging.INFO)
         cbh.setFormatter(fmt)
+        cbh._journal_tool_handler = True
         root.addHandler(cbh)
 
     return root

@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 """
 Excel导出模块：将匹配结果写入多工作表的Excel文件。
-工作表：统计摘要 | 三库交集 | 两库交集（各对） | 仅单库
+支持 1-10 个来源的交集统计导出。
 """
 import logging
+from typing import Dict, List
+
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
-from typing import Dict
 
 logger = logging.getLogger(__name__)
 
@@ -49,37 +50,34 @@ def _set_col_width(ws, col_idx, width):
     ws.column_dimensions[get_column_letter(col_idx)].width = width
 
 
-def _write_journal_sheet(ws, entries, columns, title):
-    """通用期刊列表写入。columns: list of (header, field_or_callable)"""
-    ws.freeze_panes = 'A2'
-    # 标题行
-    for j, (header, _) in enumerate(columns, 1):
-        cell = ws.cell(row=1, column=j, value=header)
-        _style_header(cell)
-
-    for i, entry in enumerate(entries, 2):
-        alt = (i % 2 == 0)
-        for j, (_, field) in enumerate(columns, 1):
-            if callable(field):
-                value = field(entry)
-            else:
-                value = entry.get(field, '')
-            cell = ws.cell(row=i, column=j, value=value)
-            _style_data(cell, alt)
-
-    # 自动列宽
-    for j in range(1, len(columns) + 1):
+def _autosize_columns(ws, max_width=60):
+    for col_idx in range(1, ws.max_column + 1):
         max_len = max(
-            (len(str(ws.cell(r, j).value or '')) for r in range(1, ws.max_row + 1)),
+            (len(str(ws.cell(row_idx, col_idx).value or '')) for row_idx in range(1, ws.max_row + 1)),
             default=10
         )
-        _set_col_width(ws, j, min(max_len + 4, 60))
+        _set_col_width(ws, col_idx, min(max_len + 4, max_width))
+
+
+def _write_sheet(ws, rows: List[Dict], columns):
+    ws.freeze_panes = 'A2'
+    for col_idx, (header, _) in enumerate(columns, 1):
+        cell = ws.cell(row=1, column=col_idx, value=header)
+        _style_header(cell)
+
+    for row_idx, row in enumerate(rows, 2):
+        alt = row_idx % 2 == 0
+        for col_idx, (_, accessor) in enumerate(columns, 1):
+            value = accessor(row) if callable(accessor) else row.get(accessor, '')
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            _style_data(cell, alt)
+
+    _autosize_columns(ws)
 
 
 def _write_summary_sheet(ws, result: Dict):
-    ws.column_dimensions['A'].width = 30
-    ws.column_dimensions['B'].width = 20
-
+    ws.column_dimensions['A'].width = 34
+    ws.column_dimensions['B'].width = 18
     row = 1
 
     def write_header(text):
@@ -100,75 +98,98 @@ def _write_summary_sheet(ws, result: Dict):
 
     write_header('各数据库有效期刊数')
     for i, (src, cnt) in enumerate(result['counts'].items()):
-        write_row(f'  {src}（排除扩展版/扩展库）', cnt, i % 2 == 0)
+        write_row('  ' + src, cnt, i % 2 == 0)
 
     row += 1
     write_header('交集统计')
 
-    all_three = result.get('all_three', [])
-    if all_three:
-        write_row('三库同时收录', len(all_three), True)
+    n_db = len(result.get('db_names', []))
+    write_row(str(n_db) + '库同时收录', len(result.get('all_n', [])), True)
 
     for i, (pair_key, entries) in enumerate(result.get('two_only', {}).items()):
-        write_row(f'仅{pair_key}共同收录', len(entries), i % 2 == 0)
+        write_row('仅' + pair_key + '共同收录', len(entries), i % 2 == 0)
+
+    for i, (combo_key, entries) in enumerate(result.get('multi_only', {}).items()):
+        write_row('仅' + combo_key + '共同收录', len(entries), i % 2 == 0)
 
     row += 1
     write_header('单库独有统计')
     for i, (src, entries) in enumerate(result.get('one_only', {}).items()):
-        write_row(f'仅在{src}中收录', len(entries), i % 2 == 0)
+        write_row('仅在' + src + '中收录', len(entries), i % 2 == 0)
 
 
-def export(result: Dict, output_path: str):
+def _flatten_entries(grouped_entries: Dict, group_field: str) -> List[Dict]:
+    rows = []
+    for group_name, entries in grouped_entries.items():
+        for entry in entries:
+            row = dict(entry)
+            row[group_field] = group_name
+            rows.append(row)
+    return rows
+
+
+def _journal_columns(group_label='来源组合'):
+    return [
+        ('序号', lambda row: row.get('_index', '')),
+        ('刊名', 'raw_name'),
+        ('标准名', 'normalized_name'),
+        ('匹配键', 'key'),
+        (group_label, 'group_name'),
+        ('来源库', lambda row: ' + '.join(row.get('sources', []))),
+    ]
+
+
+def _prepare_rows(entries: List[Dict], group_name='') -> List[Dict]:
+    rows = []
+    for index, entry in enumerate(entries, 1):
+        row = dict(entry)
+        row['_index'] = index
+        if group_name:
+            row['group_name'] = group_name
+        else:
+            row['group_name'] = row.get('group_name', '')
+        rows.append(row)
+    return rows
+
+
+def export(result: Dict, output_path: str, mode: str = 'compact'):
     wb = Workbook()
     wb.remove(wb.active)
 
-    # 1. 统计摘要
     ws_summary = wb.create_sheet('统计摘要')
     _write_summary_sheet(ws_summary, result)
     logger.info('已写入工作表：统计摘要')
 
-    # 2. 三库交集
-    all_three = result.get('all_three', [])
-    if all_three:
-        ws = wb.create_sheet('三库交集')
-        _write_journal_sheet(ws, all_three, [
-            ('序号', lambda e: all_three.index(e) + 1),
-            ('刊名', 'name'),
-            ('收录库', lambda e: ' + '.join(e['sources'])),
-        ], '三库交集')
-        logger.info(f'已写入工作表：三库交集（{len(all_three)} 种）')
+    all_n = result.get('all_n', [])
+    if all_n:
+        ws = wb.create_sheet('全交集')
+        _write_sheet(ws, _prepare_rows(all_n), _journal_columns('匹配范围'))
+        logger.info('已写入工作表：全交集（' + str(len(all_n)) + ' 种）')
 
-    # 3. 两库交集
-    for pair_key, entries in result.get('two_only', {}).items():
-        if not entries:
-            continue
-        sheet_name = pair_key  # 如'北大核心+CSSCI'
-        # sheet名称最长31字符
-        if len(sheet_name) > 31:
-            sheet_name = sheet_name[:31]
-        ws = wb.create_sheet(sheet_name)
-        _write_journal_sheet(ws, entries, [
-            ('序号', lambda e: entries.index(e) + 1),
-            ('刊名', 'name'),
-            ('收录库', lambda e: ' + '.join(e['sources'])),
-        ], pair_key)
-        logger.info(f'已写入工作表：{pair_key}（{len(entries)} 种）')
+    pair_rows = _flatten_entries(result.get('two_only', {}), 'group_name')
+    if pair_rows:
+        ws = wb.create_sheet('两两交集')
+        _write_sheet(ws, _prepare_rows(pair_rows), _journal_columns())
+        logger.info('已写入工作表：两两交集（' + str(len(pair_rows)) + ' 条）')
 
-    # 4. 仅单库
-    one_entries_all = []
-    for src, entries in result.get('one_only', {}).items():
-        for e in entries:
-            one_entries_all.append({'name': e['name'], 'key': e['key'], 'source': src})
+    multi_rows = _flatten_entries(result.get('multi_only', {}), 'group_name')
+    if multi_rows:
+        ws = wb.create_sheet('多库交集')
+        _write_sheet(ws, _prepare_rows(multi_rows), _journal_columns())
+        logger.info('已写入工作表：多库交集（' + str(len(multi_rows)) + ' 条）')
 
-    if one_entries_all:
-        one_entries_all.sort(key=lambda x: (x['source'], x['name']))
-        ws = wb.create_sheet('仅单库收录')
-        _write_journal_sheet(ws, one_entries_all, [
-            ('序号', lambda e: one_entries_all.index(e) + 1),
-            ('刊名', 'name'),
-            ('收录库', 'source'),
-        ], '仅单库收录')
-        logger.info(f'已写入工作表：仅单库收录（{len(one_entries_all)} 种）')
+    one_rows = _flatten_entries(result.get('one_only', {}), 'group_name')
+    if one_rows:
+        ws = wb.create_sheet('单库独有')
+        _write_sheet(ws, _prepare_rows(one_rows), _journal_columns('独有来源'))
+        logger.info('已写入工作表：单库独有（' + str(len(one_rows)) + ' 条）')
+
+    if mode == 'full':
+        for combo_key, entries in result.get('combo_only', {}).items():
+            sheet_name = combo_key[:31]
+            ws = wb.create_sheet(sheet_name)
+            _write_sheet(ws, _prepare_rows(entries, combo_key), _journal_columns())
+            logger.info('已写入工作表：' + sheet_name + '（' + str(len(entries)) + ' 条）')
 
     wb.save(output_path)
-    logger.info(f'Excel 已保存：{output_path}')
+    logger.info('Excel 已保存：' + output_path)

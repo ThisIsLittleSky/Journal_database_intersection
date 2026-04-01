@@ -1,169 +1,284 @@
 # 期刊数据库交集分析工具
 
-分析中文期刊在北大核心、CSSCI、CSCD 三大数据库中的收录交集情况，并将结果导出为 Excel 工作簿。
+用于分析多个期刊来源文件中的收录交集，并导出为 Excel。当前版本已不局限于固定三库，支持 1 到 10 个输入文件、专用解析器与通用解析器混合处理。
 
 ---
 
 ## 功能概述
 
-- 支持同时导入最多 3 个数据库文件（xlsx / pdf），自动识别数据库类型
-- 自动排除 CSSCI 扩展版、CSCD 扩展库期刊，仅统计正式收录期刊
-- 对刊名进行标准化处理（全角/半角统一、去除书名号、忽略大小写），提升匹配准确率
-- 计算三库交集、任意两库交集、仅单库收录三个层级的分类结果
-- 导出带样式的多工作表 Excel，并输出完整日志（含各库期刊数、各交集数、具体刊名）
-- 提供带文件选择和实时日志的 Tkinter GUI，也可命令行直接调用
-- 解析结果本地 JSON 缓存，相同文件二次运行无需重复解析
-- 支持打包为独立 EXE（PyInstaller）
+- 支持命令行与 Tkinter GUI 两种使用方式
+- 命令行支持 `1~10` 个输入文件，GUI 支持 `2~10` 个输入文件
+- 支持专用来源识别：北大核心、CSSCI、CSCD、中国科技核心期刊
+- 支持通用文件解析：`xlsx`、`xls`、`csv`、`txt`、`pdf`、`docx`、`doc`、`rtf`、`html`、`htm`
+- 对刊名进行标准化处理，按标准键计算全交集、两两交集、多库交集和单库独有
+- 导出多工作表 Excel，支持“简洁模式”和“完整模式”
+- 内置本地缓存，相同文件再次运行时可跳过重复解析
+- 支持可选 LLM 增强，用于通用解析结果的补充抽取与名称归一
+- 通用 PDF 解析支持 OCR 回退，依赖本机 `tesseract`
+- 可通过 `build.bat` 打包为 Windows 单文件 EXE
 
 ---
 
-## 支持的数据库文件
+## 支持的输入类型
 
-| 数据库 | 文件格式 | 说明 |
+### 专用解析器
+
+程序会优先根据文件名关键词匹配专用解析器：
+
+| 来源 | 格式 | 文件名关键词示例 |
 |---|---|---|
-| 北大核心期刊目录 | `.xlsx` | 单工作表，自动定位刊名列 |
-| CSSCI 中文社会科学引文索引 | `.xlsx` | 多工作表按学科分类，自动排除扩展版列 |
-| CSCD 中国科学引文数据库 | `.pdf` | 逐行解析，自动排除扩展库条目 |
+| 北大核心 | `.xlsx` / `.xls` | `北大`、`beida` |
+| CSSCI | `.xlsx` / `.xls` | `cssci`、`社会科学引文` |
+| CSCD | `.pdf` | `cscd`、`科学引文数据库` |
+| 中国科技核心期刊 | `.pdf` | `中国科技核心期刊`、`中国科技`、`科技核心` |
 
-文件名只要包含以下关键词之一，即可自动识别数据库类型，无需手动指定：
+### 通用解析器
 
-- 北大核心：`北大` / `核心期刊目录`
-- CSSCI：`CSSCI` / `社会科学引文`
-- CSCD：`CSCD` / `科学引文数据库`（或文件为 `.pdf`）
+如果未命中特定来源，会按扩展名走通用解析流程：
+
+- Excel：`.xlsx`、`.xls`
+- CSV：`.csv`
+- 文本：`.txt`
+- PDF：`.pdf`
+- Word：`.docx`、`.doc`、`.rtf`
+- HTML：`.html`、`.htm`
 
 ---
 
-## 输出 Excel 结构
+## 输出结果
 
-| 工作表名 | 内容 |
+程序会生成一个 Excel 文件，常见工作表如下：
+
+| 工作表 | 说明 |
 |---|---|
-| 统计摘要 | 各库有效期刊数、各交集数量汇总 |
-| 三库交集 | 同时被三个数据库收录的期刊 |
-| 北大核心+CSSCI | 仅同时被北大核心和 CSSCI 收录（不含三库交集） |
-| 北大核心+CSCD | 仅同时被北大核心和 CSCD 收录（不含三库交集） |
-| CSSCI+CSCD | 仅同时被 CSSCI 和 CSCD 收录（不含三库交集） |
-| 仅单库收录 | 只被一个数据库收录的期刊（含来源库列） |
+| `统计摘要` | 各来源有效期刊数、全交集、组合交集、单库独有统计 |
+| `全交集` | 所有输入来源共同收录的期刊 |
+| `两两交集` | 仅出现在两个来源中的期刊 |
+| `多库交集` | 仅出现在三个及以上、但未覆盖全部来源的期刊 |
+| `单库独有` | 仅出现在单一来源中的期刊 |
+
+当导出模式为 `full` 时，还会为每个具体来源组合单独生成工作表。
 
 ---
 
 ## 项目结构
 
-```
+```text
 Journal_database_intersection/
-├── parsers/
-│   ├── beida.py          # 北大核心 xlsx 解析器
-│   ├── cssci.py          # CSSCI xlsx 解析器
-│   └── cscd.py           # CSCD PDF 解析器
 ├── core/
-│   ├── normalizer.py     # 刊名标准化
-│   ├── matcher.py        # 集合运算（三库/两库/单库）
-│   └── exporter.py       # Excel 导出
+│   ├── config.py            # 运行时配置、LLM 配置读写
+│   ├── exporter.py          # Excel 导出
+│   ├── ingestion.py         # 文件解析入口与缓存集成
+│   ├── llm_client.py        # OpenAI 兼容接口客户端
+│   ├── llm_extractor.py     # LLM 增强抽取与归一
+│   ├── matcher.py           # N 库交集计算
+│   ├── models.py            # 数据模型
+│   ├── normalizer.py        # 刊名标准化
+│   ├── ocr_service.py       # PDF OCR 支持
+│   └── parser_registry.py   # 解析器注册与分发
+├── parsers/
+│   ├── base.py
+│   ├── beida.py
+│   ├── cssci.py
+│   ├── cscd.py
+│   ├── zhongguo_kj.py
+│   ├── excel_parser.py
+│   ├── csv_parser.py
+│   ├── txt_parser.py
+│   ├── pdf_parser.py
+│   ├── docx_parser.py
+│   ├── doc_parser.py
+│   └── html_parser.py
 ├── data/
-│   └── cache.json        # 解析结果缓存（自动生成）
-├── logs/                 # 运行日志目录（自动生成）
-├── cache_store.py        # 缓存读写模块
-├── logger_setup.py       # 日志配置
-├── main.py               # 主逻辑入口（可命令行运行）
-├── gui.py                # Tkinter GUI
-├── build.bat             # PyInstaller 打包脚本（Windows）
-└── requirements.txt      # 依赖列表
+│   └── cache.json           # 解析缓存
+├── docs/
+│   └── gui_preview.png
+├── logs/                    # 运行日志目录
+├── cache_store.py           # 缓存读写
+├── logger_setup.py          # 日志初始化
+├── main.py                  # CLI 入口
+├── gui.py                   # GUI 入口
+├── build.bat                # Windows 打包脚本
+└── requirements.txt         # Python 依赖
 ```
 
 ---
 
-## 快速开始
-
-### 环境要求
+## 环境要求
 
 - Python 3.10+
-- Windows（GUI 及打包脚本基于 Windows，核心逻辑跨平台）
+- Windows（GUI 与 `build.bat` 面向 Windows；核心逻辑本身以 Python 实现）
 
-### 安装依赖
+---
+
+## 安装依赖
 
 ```bash
-# 创建虚拟环境（推荐）
 python -m venv venv
 venv\Scripts\activate
-
 pip install -r requirements.txt
 ```
 
-`requirements.txt` 内容：
+当前 `requirements.txt` 包含：
 
-```
+```text
 openpyxl>=3.1.0
 PyMuPDF>=1.23.0
 ```
 
-### 命令行运行
+说明：
+
+- 若需打包，还需额外安装 `pyinstaller`
+- 若需 PDF OCR 回退，还需在系统中安装 `tesseract`
+
+---
+
+## 运行方式
+
+### 命令行
 
 ```bash
-python main.py 文件1 [文件2] [文件3] 输出路径.xlsx
+python main.py <文件1> [文件2] ... <输出Excel路径>
 ```
+
+- 输入文件数量：`1~10`
+- 最后一个参数必须是输出 Excel 路径
 
 示例：
 
 ```bash
-python main.py \
-  "1.北大核心期刊目录2023版.xlsx" \
-  "2.CSSCI2025-2026版.xlsx" \
-  "3.CSCD来源期刊列表2025-2026.pdf" \
-  "期刊交集分析结果.xlsx"
+python main.py "北大核心目录.xlsx" "CSSCI目录.xlsx" "结果.xlsx"
+python main.py "来源1.csv" "来源2.pdf" "来源3.docx" "期刊交集分析结果.xlsx"
 ```
 
-### GUI 运行
+### GUI
 
 ```bash
 python gui.py
 ```
 
-界面说明：
-1. 分别为三个数据库文件点击「浏览…」选择文件（可以只选 1 或 2 个）
-2. 选择输出目录（不选则默认输出到第一个文件所在目录）
-3. 点击「开始分析」，日志实时显示在下方
-4. 完成后弹窗提示，可一键打开输出文件所在目录
+GUI 特点：
+
+- 至少选择 `2` 个文件，最多 `10` 个
+- 可选择输出目录；若不填写，默认输出到第一个输入文件所在目录
+- 支持“简洁模式”和“完整模式”
+- 可填写 DeepSeek API Key，保存到运行目录下的 `conf_Journal_database_intersection.conf`
+- 分析完成后可直接打开输出文件所在位置
 
 ![GUI 界面示意](docs/gui_preview.png)
 
 ---
 
-## 打包为 EXE
+## LLM 配置
 
-在项目根目录双击运行 `build.bat`，将自动调用 PyInstaller 生成单文件可执行程序，输出在 `dist/` 目录。
+GUI 会将 LLM 配置保存到：
 
+```text
+conf_Journal_database_intersection.conf
 ```
-dist/
-└── 期刊交集分析工具.exe
-```
 
-> 打包前需先激活虚拟环境并安装 `pyinstaller`：
-> ```bash
-> pip install pyinstaller
-> ```
+默认配置项包括：
+
+- `enabled`
+- `api_key`
+- `base_url`，默认 `https://api.deepseek.com`
+- `model`，默认 `deepseek-chat`
+
+说明：
+
+- 未填写 API Key 时，程序仅使用规则解析
+- LLM 增强当前主要作用于通用解析器结果，不影响专用解析器的基础流程
 
 ---
 
-## 实际运行结果示例
+## 缓存与日志
 
-以 2023 版北大核心（1987 种）、CSSCI 2025-2026（660 种主刊）、CSCD 2025-2026（1120 种核心库）为输入：
+- 解析缓存文件：`data/cache.json`
+- 运行日志目录：`logs/`
 
-| 分类 | 期刊数 |
-|---|---|
-| 三库同时收录 | 28 种 |
-| 仅北大核心 + CSSCI | 446 种 |
-| 仅北大核心 + CSCD | 618 种 |
-| 仅 CSSCI + CSCD | 0 种 |
-| 仅单库收录 | 1555 种 |
+如需强制重新解析，可删除缓存文件后重试。
 
-> CSSCI 与 CSCD 无交集符合预期——CSSCI 收录人文社科期刊，CSCD 收录自然科学期刊，学科几乎不重叠。
+---
+
+## 测试与校验
+
+当前仓库内未提供现成的自动化测试、`pytest` 配置、lint 或 type check 脚本。
+
+建议使用以下方式做基本验证：
+
+### 1. 语法检查
+
+```bash
+python -m compileall .
+```
+
+### 2. 命令行冒烟测试
+
+```bash
+python main.py "样例1.xlsx" "样例2.pdf" "输出结果.xlsx"
+```
+
+### 3. GUI 冒烟测试
+
+```bash
+python gui.py
+```
+
+重点检查：
+
+- 文件能否被识别到正确解析器
+- 是否能正常生成 Excel
+- `统计摘要` 与交集工作表是否符合预期
+- 日志中是否出现解析失败或 OCR / LLM 相关异常
+
+---
+
+## 打包
+
+项目已提供 Windows 打包脚本：
+
+```bat
+build.bat
+```
+
+脚本会执行以下流程：
+
+1. 进入项目根目录
+2. 激活 `venv\Scripts\activate.bat`
+3. 自动安装 `pyinstaller`
+4. 以 `gui.py` 为入口打包为单文件 GUI 程序
+
+打包命令核心参数包括：
+
+- `--onefile`
+- `--windowed`
+- `--name "期刊交集分析工具"`
+- `--add-data "data;data"`
+
+打包产物位于：
+
+```text
+dist\期刊交集分析工具.exe
+```
+
+如果打包前尚未创建虚拟环境，请先完成：
+
+```bash
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+pip install pyinstaller
+```
 
 ---
 
 ## 注意事项
 
-- 刊名匹配采用字符串精确匹配（标准化后），不做模糊匹配
-- 如更新了数据库文件，删除 `data/cache.json` 可强制重新解析
-- 本工具不内置任何数据库文件，需用户自行获取并提供原始文件
+- 交集计算基于标准化后的刊名键，不是模糊匹配
+- 当多个输入文件来源名重复时，程序会自动追加编号区分
+- GUI 最少需要 2 个文件；命令行最少 1 个文件
+- 通用 PDF OCR 依赖系统安装的 `tesseract`
+- 本工具不附带任何数据库原始数据文件
 
 ---
 
