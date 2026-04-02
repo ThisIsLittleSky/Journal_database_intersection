@@ -1,22 +1,39 @@
 @echo off
 chcp 65001 >nul
 echo ========================================
-echo  期刊数据库交集分析工具 - 打包脚本
+echo  Journal Database Intersection Tool - Build Script
 echo ========================================
 
 cd /d "%~dp0"
 
-echo [1/3] 激活虚拟环境...
+echo [1/3] Activating virtual environment...
+if not exist "venv\Scripts\activate.bat" (
+    echo ERROR: Virtual environment not found, please run: python -m venv venv
+    pause
+    exit /b 1
+)
 call venv\Scripts\activate.bat
+if errorlevel 1 (
+    echo ERROR: Failed to activate virtual environment
+    pause
+    exit /b 1
+)
 
-echo [2/3] 安装 PyInstaller...
+echo [2/3] Installing PyInstaller...
 pip install pyinstaller -q
+if errorlevel 1 (
+    echo ERROR: Failed to install PyInstaller
+    pause
+    exit /b 1
+)
 
-echo [3/3] 打包为单文件 EXE...
+echo [3/3] Building single-file EXE...
 pyinstaller ^
     --onefile ^
     --windowed ^
-    --name "期刊交集分析工具" ^
+    --noconsole ^
+    --icon "data\1.ico" ^
+    --name "JournalIntersectionTool" ^
     --add-data "data;data" ^
     --hidden-import openpyxl ^
     --hidden-import fitz ^
@@ -38,6 +55,13 @@ pyinstaller ^
     --hidden-import core.ocr_service ^
     gui.py
 
+if errorlevel 1 (
+    echo.
+    echo ERROR: Build failed, please check error messages above
+    pause
+    exit /b 1
+)
+
 echo.
-echo 打包完成！EXE 位于 dist\ 目录。
+echo Build completed! EXE is located in dist\ directory.
 pause
