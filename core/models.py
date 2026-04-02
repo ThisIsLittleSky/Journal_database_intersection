@@ -35,6 +35,11 @@ class ParseResult:
     parser_name: str
     journals: List[JournalRecord] = field(default_factory=list)
     raw_text: str = ''
+    raw_chunks: List[Dict] = field(default_factory=list)
+    raw_chunk_policy: str = ''
+    structured_rows: List[Dict] = field(default_factory=list)
+    structured_input_type: str = ''
+    structured_input_version: str = ''
     warnings: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict:
@@ -45,5 +50,10 @@ class ParseResult:
             'parser_name': self.parser_name,
             'journals': [journal.to_dict() for journal in self.journals],
             'raw_text': self.raw_text,
+            'raw_chunks': [dict(chunk) for chunk in self.raw_chunks],
+            'raw_chunk_policy': self.raw_chunk_policy,
+            'structured_rows': [dict(row) for row in self.structured_rows],
+            'structured_input_type': self.structured_input_type,
+            'structured_input_version': self.structured_input_version,
             'warnings': list(self.warnings),
         }

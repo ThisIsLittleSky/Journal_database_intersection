@@ -20,9 +20,6 @@ pyinstaller ^
     --add-data "data;data" ^
     --hidden-import openpyxl ^
     --hidden-import fitz ^
-    --hidden-import parsers.beida ^
-    --hidden-import parsers.cssci ^
-    --hidden-import parsers.cscd ^
     --hidden-import parsers.csv_parser ^
     --hidden-import parsers.excel_parser ^
     --hidden-import parsers.pdf_parser ^

@@ -3,7 +3,7 @@ import logging
 import os
 import re
 
-from core.normalizer import normalize
+from core.text_chunking import build_line_chunks
 
 logger = logging.getLogger(__name__)
 
@@ -41,21 +41,22 @@ def _decode_text(filepath: str) -> str:
 def parse(filepath: str) -> dict:
     source_name = os.path.splitext(os.path.basename(filepath))[0]
     text = _decode_text(filepath)
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
     seen = set()
     journals = []
-    for line in text.splitlines():
+    for line in lines:
         name = line.strip()
         if len(name) < 2 or name.isdigit():
             continue
-        key = normalize(name)
-        if not key or key in seen:
+        if name in seen:
             continue
-        seen.add(key)
-        journals.append({'name': name, 'key': key, 'source': source_name})
+        seen.add(name)
+        journals.append({'name': name, 'key': name, 'source': source_name})
     logger.info(f'DOC兼容解析完成：{source_name}，有效期刊数 {len(journals)}')
     return {
         'source_db': source_name,
         'journals': journals,
         'raw_text': text[:12000],
+        'raw_chunks': build_line_chunks(lines, chunk_size=80, label_prefix='DOC第'),
         'warnings': ['DOC 为兼容解析，复杂二进制文档可能需要另行转换为 DOCX'],
     }

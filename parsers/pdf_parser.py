@@ -4,9 +4,8 @@ import os
 import re
 
 import fitz
-
-from core.normalizer import normalize
 from core.ocr_service import OCRService
+from core.text_chunking import build_page_chunks
 
 logger = logging.getLogger(__name__)
 
@@ -17,17 +16,14 @@ _SKIP_LINE = re.compile(
 _LEADING_INDEX = re.compile(r'^\s*\d+[\.\-、\)\]）\s]*')
 
 
-def _extract_lines(filepath: str) -> list[str]:
+def _extract_pages(filepath: str) -> list[str]:
     doc = fitz.open(filepath)
-    lines = []
+    pages = []
     for page in doc:
         text = page.get_text('text')
-        for line in text.splitlines():
-            clean = line.strip()
-            if clean:
-                lines.append(clean)
+        pages.append(text.strip())
     doc.close()
-    return lines
+    return pages
 
 
 def _filter_candidate_lines(lines: list[str]) -> list[str]:
@@ -53,7 +49,8 @@ def _is_candidate(line: str) -> bool:
 
 def parse(filepath: str) -> dict:
     source_name = os.path.splitext(os.path.basename(filepath))[0]
-    lines = _extract_lines(filepath)
+    pages = _extract_pages(filepath)
+    lines = [line.strip() for page in pages for line in page.splitlines() if line.strip()]
     ocr_used = False
 
     candidate_lines = _filter_candidate_lines(lines)
@@ -64,7 +61,10 @@ def parse(filepath: str) -> dict:
             try:
                 ocr_text = ocr_service.extract_text_from_pdf(filepath)
                 if ocr_text.strip():
-                    lines = [line.strip() for line in ocr_text.splitlines() if line.strip()]
+                    pages = [page.strip() for page in ocr_text.split('\f') if page.strip()]
+                    if not pages:
+                        pages = [ocr_text.strip()]
+                    lines = [line.strip() for page in pages for line in page.splitlines() if line.strip()]
                     candidate_lines = _filter_candidate_lines(lines)
                     ocr_used = True
             except Exception as exc:
@@ -73,19 +73,19 @@ def parse(filepath: str) -> dict:
             logger.warning('未检测到tesseract，扫描版PDF可能无法完整识别')
 
     results = []
-    seen_keys = set()
+    seen_names = set()
 
     for line in candidate_lines:
-        key = normalize(line)
-        if not key or key in seen_keys:
+        if line in seen_names:
             continue
-        seen_keys.add(key)
-        results.append({'name': line, 'key': key, 'source': source_name})
+        seen_names.add(line)
+        results.append({'name': line, 'key': line, 'source': source_name})
 
     logger.info(f'通用PDF解析完成：{source_name}，有效期刊数 {len(results)}')
     return {
         'source_db': source_name,
         'journals': results,
         'raw_text': '\n'.join(lines[:500]),
+        'raw_chunks': build_page_chunks(pages),
         'warnings': ['已启用OCR识别'] if ocr_used else [],
     }

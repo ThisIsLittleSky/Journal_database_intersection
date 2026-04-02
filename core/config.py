@@ -49,11 +49,17 @@ def save_app_config(config: dict):
 
 def build_llm_config(app_config: dict | None = None) -> dict:
     data = app_config or load_app_config()
-    api_key = str(data.get('llm_api_key', '') or '').strip()
-    enabled = bool(data.get('llm_enabled')) and bool(api_key)
+    api_key = str(data.get('llm_api_key', data.get('api_key', '')) or '').strip()
+    enabled_flag = data.get('llm_enabled')
+    if enabled_flag is None:
+        enabled_flag = data.get('enabled')
+    enabled = bool(enabled_flag) and bool(api_key)
     return {
         'enabled': enabled,
         'api_key': api_key,
-        'base_url': str(data.get('llm_base_url', DEFAULT_BASE_URL) or DEFAULT_BASE_URL).strip(),
-        'model': str(data.get('llm_model', DEFAULT_MODEL) or DEFAULT_MODEL).strip(),
+        'base_url': str(
+            data.get('llm_base_url', data.get('base_url', DEFAULT_BASE_URL))
+            or DEFAULT_BASE_URL
+        ).strip(),
+        'model': str(data.get('llm_model', data.get('model', DEFAULT_MODEL)) or DEFAULT_MODEL).strip(),
     }

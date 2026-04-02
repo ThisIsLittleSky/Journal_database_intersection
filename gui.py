@@ -28,7 +28,6 @@ class App(tk.Tk):
         self.minsize(820, 620)
         self._file_vars = []
         self._out_var = tk.StringVar()
-        self._export_mode_var = tk.StringVar(value='简洁模式')
         self._api_key_var = tk.StringVar()
         self._running = False
         self._load_saved_config()
@@ -75,14 +74,6 @@ class App(tk.Tk):
         ttk.Entry(out_frame, textvariable=self._out_var, width=55).grid(
             row=0, column=1, sticky='ew', padx=(6, 4))
         ttk.Button(out_frame, text='浏览…', command=self._browse_outdir).grid(row=0, column=2)
-        ttk.Label(out_frame, text='导出模式').grid(row=1, column=0, sticky='w', pady=(8, 0))
-        ttk.Combobox(
-            out_frame,
-            textvariable=self._export_mode_var,
-            state='readonly',
-            values=('简洁模式', '完整模式'),
-            width=12
-        ).grid(row=1, column=1, sticky='w', padx=(6, 4), pady=(8, 0))
 
         llm_frame = ttk.LabelFrame(self, text='LLM 配置', padding=10)
         llm_frame.grid(row=2, column=0, sticky='ew', padx=12, pady=4)
@@ -255,13 +246,10 @@ class App(tk.Tk):
 
         thread = threading.Thread(
             target=self._run_task,
-            args=(files, output_path, self._get_export_mode(), self._build_llm_config()),
+            args=(files, output_path, self._build_llm_config()),
             daemon=True
         )
         thread.start()
-
-    def _get_export_mode(self):
-        return 'full' if self._export_mode_var.get() == '完整模式' else 'compact'
 
     def _build_llm_config(self):
         return app_config.build_llm_config({
@@ -271,13 +259,12 @@ class App(tk.Tk):
             'llm_model': app_config.DEFAULT_MODEL,
         })
 
-    def _run_task(self, files, output_path, export_mode, llm_config):
+    def _run_task(self, files, output_path, llm_config):
         try:
             import main as main_module
             main_module.run(
                 files,
                 output_path,
-                export_mode=export_mode,
                 llm_config=llm_config,
             )
             self.after(0, self._on_done, output_path, None)

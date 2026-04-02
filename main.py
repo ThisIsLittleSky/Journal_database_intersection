@@ -32,7 +32,6 @@ def run(
     output_path: str,
     log_callback=None,
     log_dir: str = None,
-    export_mode: str = 'compact',
     llm_config: dict | None = None,
 ):
     """
@@ -40,7 +39,6 @@ def run(
     output_path: 输出 Excel 路径
     log_callback: 可选，GUI 日志回调
     log_dir: 可选，日志文件目录
-    export_mode: compact | full
     llm_config: LLM配置，未传时读取本地conf
     """
     # 初始化日志（如果尚未初始化）
@@ -57,9 +55,9 @@ def run(
 
     resolved_llm_config = app_config.build_llm_config(llm_config)
     if resolved_llm_config.get('enabled'):
-        logger.info('已启用LLM增强：' + resolved_llm_config.get('model', ''))
+        logger.info('已启用LLM分析：' + resolved_llm_config.get('model', ''))
     else:
-        logger.info('未启用LLM增强，将仅使用规则解析')
+        raise ValueError('当前版本已改为直接调用大模型分析，请先配置可用的 API Key')
 
     registry = ingestion.get_registry()
     db_results = []
@@ -83,7 +81,7 @@ def run(
     result = matcher.compute(db_results)
 
     logger.info('导出结果到：' + output_path)
-    exporter.export(result, output_path, mode=export_mode)
+    exporter.export(result, output_path)
 
     logger.info('=' * 50)
     logger.info('分析完成！')

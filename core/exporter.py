@@ -103,14 +103,12 @@ def _write_summary_sheet(ws, result: Dict):
     row += 1
     write_header('交集统计')
 
-    n_db = len(result.get('db_names', []))
-    write_row(str(n_db) + '库同时收录', len(result.get('all_n', [])), True)
-
-    for i, (pair_key, entries) in enumerate(result.get('two_only', {}).items()):
-        write_row('仅' + pair_key + '共同收录', len(entries), i % 2 == 0)
-
-    for i, (combo_key, entries) in enumerate(result.get('multi_only', {}).items()):
-        write_row('仅' + combo_key + '共同收录', len(entries), i % 2 == 0)
+    intersections = result.get('intersections', {})
+    idx = 0
+    for size in sorted(intersections.keys(), reverse=True):
+        for combo_key, entries in sorted(intersections[size].items()):
+            write_row(combo_key + ' 交集', len(entries), idx % 2 == 0)
+            idx += 1
 
     row += 1
     write_header('单库独有统计')
@@ -152,7 +150,7 @@ def _prepare_rows(entries: List[Dict], group_name='') -> List[Dict]:
     return rows
 
 
-def export(result: Dict, output_path: str, mode: str = 'compact'):
+def export(result: Dict, output_path: str):
     wb = Workbook()
     wb.remove(wb.active)
 
@@ -160,36 +158,25 @@ def export(result: Dict, output_path: str, mode: str = 'compact'):
     _write_summary_sheet(ws_summary, result)
     logger.info('已写入工作表：统计摘要')
 
-    all_n = result.get('all_n', [])
-    if all_n:
-        ws = wb.create_sheet('全交集')
-        _write_sheet(ws, _prepare_rows(all_n), _journal_columns('匹配范围'))
-        logger.info('已写入工作表：全交集（' + str(len(all_n)) + ' 种）')
-
-    pair_rows = _flatten_entries(result.get('two_only', {}), 'group_name')
-    if pair_rows:
-        ws = wb.create_sheet('两两交集')
-        _write_sheet(ws, _prepare_rows(pair_rows), _journal_columns())
-        logger.info('已写入工作表：两两交集（' + str(len(pair_rows)) + ' 条）')
-
-    multi_rows = _flatten_entries(result.get('multi_only', {}), 'group_name')
-    if multi_rows:
-        ws = wb.create_sheet('多库交集')
-        _write_sheet(ws, _prepare_rows(multi_rows), _journal_columns())
-        logger.info('已写入工作表：多库交集（' + str(len(multi_rows)) + ' 条）')
+    intersections = result.get('intersections', {})
+    for size in sorted(intersections.keys(), reverse=True):
+        sheet_name = str(size) + '库交集'
+        all_entries = []
+        for combo_key, entries in sorted(intersections[size].items()):
+            for entry in entries:
+                row = dict(entry)
+                row['group_name'] = combo_key
+                all_entries.append(row)
+        
+        if all_entries or size == len(result.get('db_names', [])):
+            ws = wb.create_sheet(sheet_name)
+            _write_sheet(ws, _prepare_rows(all_entries), _journal_columns('交集组合'))
+            logger.info('已写入工作表：' + sheet_name + '（' + str(len(all_entries)) + ' 种）')
 
     one_rows = _flatten_entries(result.get('one_only', {}), 'group_name')
-    if one_rows:
-        ws = wb.create_sheet('单库独有')
-        _write_sheet(ws, _prepare_rows(one_rows), _journal_columns('独有来源'))
-        logger.info('已写入工作表：单库独有（' + str(len(one_rows)) + ' 条）')
-
-    if mode == 'full':
-        for combo_key, entries in result.get('combo_only', {}).items():
-            sheet_name = combo_key[:31]
-            ws = wb.create_sheet(sheet_name)
-            _write_sheet(ws, _prepare_rows(entries, combo_key), _journal_columns())
-            logger.info('已写入工作表：' + sheet_name + '（' + str(len(entries)) + ' 条）')
+    ws = wb.create_sheet('单库独有')
+    _write_sheet(ws, _prepare_rows(one_rows), _journal_columns('独有来源'))
+    logger.info('已写入工作表：单库独有（' + str(len(one_rows)) + ' 条）')
 
     wb.save(output_path)
     logger.info('Excel 已保存：' + output_path)

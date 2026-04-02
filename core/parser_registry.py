@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
 
-from parsers import beida, cscd, cssci, zhongguo_kj
 from parsers.base import BaseParser
 from parsers import csv_parser, doc_parser, docx_parser, excel_parser, html_parser, pdf_parser, txt_parser
 
@@ -42,31 +41,6 @@ class ParserRegistry:
 
 def build_default_registry() -> ParserRegistry:
     registry = ParserRegistry()
-
-    registry.register(FunctionParser(
-        name='zhongguo_kj_pdf',
-        supported_extensions=('.pdf',),
-        parse_func=zhongguo_kj.parse,
-        keywords=('中国科技核心期刊', '中国科技', '科技核心')
-    ))
-    registry.register(FunctionParser(
-        name='cscd_pdf',
-        supported_extensions=('.pdf',),
-        parse_func=cscd.parse,
-        keywords=('cscd', '科学引文数据库')
-    ))
-    registry.register(FunctionParser(
-        name='beida_excel',
-        supported_extensions=('.xlsx', '.xls'),
-        parse_func=beida.parse,
-        keywords=('北大', 'beida')
-    ))
-    registry.register(FunctionParser(
-        name='cssci_excel',
-        supported_extensions=('.xlsx', '.xls'),
-        parse_func=cssci.parse,
-        keywords=('cssci', '社会科学引文')
-    ))
 
     registry.register(FunctionParser(
         name='excel_generic',

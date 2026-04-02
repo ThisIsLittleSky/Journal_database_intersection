@@ -1,6 +1,6 @@
 # 期刊数据库交集分析工具
 
-用于分析多个期刊来源文件中的收录交集，并导出为 Excel。当前版本已不局限于固定三库，支持 1 到 10 个输入文件、专用解析器与通用解析器混合处理。
+用于分析多个期刊来源文件中的收录交集，并导出为 Excel。支持 1 到 10 个输入文件，使用 LLM 增强的通用解析器处理多种文件格式。
 
 ---
 
@@ -8,12 +8,11 @@
 
 - 支持命令行与 Tkinter GUI 两种使用方式
 - 命令行支持 `1~10` 个输入文件，GUI 支持 `2~10` 个输入文件
-- 支持专用来源识别：北大核心、CSSCI、CSCD、中国科技核心期刊
 - 支持通用文件解析：`xlsx`、`xls`、`csv`、`txt`、`pdf`、`docx`、`doc`、`rtf`、`html`、`htm`
 - 对刊名进行标准化处理，按标准键计算全交集、两两交集、多库交集和单库独有
-- 导出多工作表 Excel，支持“简洁模式”和“完整模式”
+- 导出多工作表 Excel
 - 内置本地缓存，相同文件再次运行时可跳过重复解析
-- 支持可选 LLM 增强，用于通用解析结果的补充抽取与名称归一
+- 使用 LLM 增强解析，自动抽取期刊信息与名称归一化
 - 通用 PDF 解析支持 OCR 回退，依赖本机 `tesseract`
 - 可通过 `build.bat` 打包为 Windows 单文件 EXE
 
@@ -21,20 +20,7 @@
 
 ## 支持的输入类型
 
-### 专用解析器
-
-程序会优先根据文件名关键词匹配专用解析器：
-
-| 来源 | 格式 | 文件名关键词示例 |
-|---|---|---|
-| 北大核心 | `.xlsx` / `.xls` | `北大`、`beida` |
-| CSSCI | `.xlsx` / `.xls` | `cssci`、`社会科学引文` |
-| CSCD | `.pdf` | `cscd`、`科学引文数据库` |
-| 中国科技核心期刊 | `.pdf` | `中国科技核心期刊`、`中国科技`、`科技核心` |
-
-### 通用解析器
-
-如果未命中特定来源，会按扩展名走通用解析流程：
+程序支持以下文件格式，使用通用解析器配合 LLM 自动识别和提取期刊信息：
 
 - Excel：`.xlsx`、`.xls`
 - CSV：`.csv`
@@ -47,7 +33,7 @@
 
 ## 输出结果
 
-程序会生成一个 Excel 文件，常见工作表如下：
+程序会生成一个 Excel 文件，包含以下工作表：
 
 | 工作表 | 说明 |
 |---|---|
@@ -56,8 +42,6 @@
 | `两两交集` | 仅出现在两个来源中的期刊 |
 | `多库交集` | 仅出现在三个及以上、但未覆盖全部来源的期刊 |
 | `单库独有` | 仅出现在单一来源中的期刊 |
-
-当导出模式为 `full` 时，还会为每个具体来源组合单独生成工作表。
 
 ---
 
@@ -78,10 +62,6 @@ Journal_database_intersection/
 │   └── parser_registry.py   # 解析器注册与分发
 ├── parsers/
 │   ├── base.py
-│   ├── beida.py
-│   ├── cssci.py
-│   ├── cscd.py
-│   ├── zhongguo_kj.py
 │   ├── excel_parser.py
 │   ├── csv_parser.py
 │   ├── txt_parser.py
@@ -108,6 +88,7 @@ Journal_database_intersection/
 
 - Python 3.10+
 - Windows（GUI 与 `build.bat` 面向 Windows；核心逻辑本身以 Python 实现）
+- DeepSeek API Key（必需，用于 LLM 增强解析）
 
 ---
 
@@ -147,7 +128,7 @@ python main.py <文件1> [文件2] ... <输出Excel路径>
 示例：
 
 ```bash
-python main.py "北大核心目录.xlsx" "CSSCI目录.xlsx" "结果.xlsx"
+python main.py "数据库1.xlsx" "数据库2.xlsx" "结果.xlsx"
 python main.py "来源1.csv" "来源2.pdf" "来源3.docx" "期刊交集分析结果.xlsx"
 ```
 
@@ -161,7 +142,6 @@ GUI 特点：
 
 - 至少选择 `2` 个文件，最多 `10` 个
 - 可选择输出目录；若不填写，默认输出到第一个输入文件所在目录
-- 支持“简洁模式”和“完整模式”
 - 可填写 DeepSeek API Key，保存到运行目录下的 `conf_Journal_database_intersection.conf`
 - 分析完成后可直接打开输出文件所在位置
 
@@ -186,8 +166,7 @@ conf_Journal_database_intersection.conf
 
 说明：
 
-- 未填写 API Key 时，程序仅使用规则解析
-- LLM 增强当前主要作用于通用解析器结果，不影响专用解析器的基础流程
+- 当前版本必须配置 API Key 才能运行，LLM 用于自动识别和提取期刊信息
 
 ---
 
@@ -226,7 +205,7 @@ python gui.py
 
 重点检查：
 
-- 文件能否被识别到正确解析器
+- 文件能否被正确解析
 - 是否能正常生成 Excel
 - `统计摘要` 与交集工作表是否符合预期
 - 日志中是否出现解析失败或 OCR / LLM 相关异常
@@ -279,6 +258,7 @@ pip install pyinstaller
 - GUI 最少需要 2 个文件；命令行最少 1 个文件
 - 通用 PDF OCR 依赖系统安装的 `tesseract`
 - 本工具不附带任何数据库原始数据文件
+- 必须配置有效的 DeepSeek API Key 才能运行
 
 ---
 
